@@ -94,6 +94,10 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false

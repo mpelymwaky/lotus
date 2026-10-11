@@ -970,7 +970,7 @@ fun PlaybackControl(
             }
         }
 
-        WavingSeekBar(
+        SquigglySeekBar(
             position = position,
             duration = currentTrack.duration.toLong(),
             onPositionChange = {

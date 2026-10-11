@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -18,9 +19,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -47,33 +46,29 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.dn0ne.player.app.presentation.components.animatable.rememberAnimatable
 import kotlin.math.PI
 import kotlin.math.cos
 
+/**
+ * Squiggly seek bar powered by [SquigglyProgress] and Gramophone's capsule seekbar thumb styling.
+ */
 @Composable
-fun WavingSeekBar(
+fun SquigglySeekBar(
     position: Long,
     duration: Long,
     isPlaying: Boolean,
     onPositionChange: (Long) -> Unit,
     enableWaving: Boolean = true,
     waveHeight: Dp = 6.dp,
-    waveWidth: Dp = 6.dp,
+    waveLength: Dp = 42.dp,
     strokeWidth: Dp = 3.dp,
-    handleSize: Dp = 20.dp,
+    thumbWidth: Dp = 4.dp,
+    thumbHeight: Dp = 20.dp,
+    thumbColor: Color = MaterialTheme.colorScheme.primary,
+    touchTargetWidth: Dp = 32.dp,
+    touchTargetHeight: Dp = 36.dp,
     modifier: Modifier = Modifier
 ) {
-    val progressBarHeight by remember {
-        mutableStateOf(waveHeight)
-    }
-    val handlePadding by remember {
-        mutableStateOf(12.dp)
-    }
-    val handleSize by remember {
-        mutableStateOf(handleSize)
-    }
-
     var handleOffsetFraction by remember {
         mutableFloatStateOf(0f)
     }
@@ -115,25 +110,41 @@ fun WavingSeekBar(
         mutableStateOf(layoutDirection == LayoutDirection.Ltr)
     }
 
+    val currentThumbWidth by animateDpAsState(
+        targetValue = if (isHandleInDrag) thumbWidth + 2.dp else thumbWidth,
+        animationSpec = tween(150),
+        label = "seek-bar-thumb-width-animation"
+    )
+
     Column(
         modifier = modifier
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(touchTargetHeight.coerceAtLeast(thumbHeight))
         ) {
-            Row(
+            SquigglyProgress(
+                progress = handleOffsetFraction,
+                isPlaying = enableWaving && isPlaying && !isHandleInDrag,
+                waveColor = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                strokeWidth = strokeWidth,
+                lineAmplitude = waveHeight,
+                waveLength = waveLength,
+                phaseSpeed = 40.dp,
+                transitionEnabled = true,
                 modifier = Modifier
+                    .matchParentSize()
                     .onGloballyPositioned {
                         barWidth = it.size.width.toFloat()
                         handleOffset = barWidth * handleOffsetFraction
                     }
-                    .matchParentSize()
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onPress = {
                                 handleOffset = (if (isLtr) it.x else barWidth - it.x).coerceIn(0f, barWidth)
-                                handleOffsetFraction = handleOffset / barWidth
+                                handleOffsetFraction = if (barWidth > 0f) handleOffset / barWidth else 0f
                                 onPositionChange(
                                     (handleOffsetFraction * currentDuration).toLong()
                                 )
@@ -155,71 +166,28 @@ fun WavingSeekBar(
                             handleOffset += if (isLtr) dragAmount.x else -dragAmount.x
 
                             handleOffset = handleOffset.coerceIn(0f, barWidth)
-                            handleOffsetFraction = handleOffset / barWidth
+                            handleOffsetFraction = if (barWidth > 0f) handleOffset / barWidth else 0f
                         }
-                    },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledSeekBarSegment(
-                    color = MaterialTheme.colorScheme.primary,
-                    enableWaving = enableWaving && isPlaying && !isHandleInDrag,
-                    waveBackwards = !isLtr,
-                    waveWidth = with(density) {
-                        waveWidth.toPx()
-                    },
-                    strokeWidth = with(density) {
-                        strokeWidth.toPx()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth(
-                            animateFloatAsState(
-                                targetValue = handleOffsetFraction,
-                                label = "filled-seek-bar-segment-animation"
-                            ).value
-                        )
-                        .height(progressBarHeight)
-                )
-
-                RestSeekBarSegment(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    strokeWidth = with(density) {
-                        strokeWidth.toPx()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(progressBarHeight)
-                )
-            }
-
-            var lastAngle by remember {
-                mutableFloatStateOf(0f)
-            }
-            val handleRotation = rememberAnimatable(initialValue = 0f)
-            LaunchedEffect(isPlaying) {
-                val startAngle = (lastAngle.toInt() % 90).toFloat()
-                while (isPlaying) {
-                    handleRotation.animateTo(
-                        targetValue = startAngle + if (isLtr) 90f else -90f,
-                        animationSpec = tween(durationMillis = 1000, easing = LinearEasing)
-                    ) {
-                        lastAngle = value
                     }
-                    handleRotation.snapTo(startAngle)
-                }
-            }
+            )
+
+            val thumbXOffset = animateDpAsState(
+                targetValue = with(density) {
+                    val resolvedOffset = if (isLtr) handleOffset else barWidth - handleOffset
+                    resolvedOffset.toDp() - touchTargetWidth / 2
+                },
+                animationSpec = if (isHandleInDrag) snap() else tween(durationMillis = 100),
+                label = "seek-bar-thumb-position-animation"
+            ).value
 
             SeekBarHandle(
+                thumbWidth = currentThumbWidth,
+                thumbHeight = thumbHeight,
+                thumbColor = thumbColor,
                 modifier = Modifier
-                    .size(handleSize + handlePadding * 2)
-                    .padding(handlePadding)
-                    .offset(
-                        x = animateDpAsState(
-                            targetValue = with(density) {
-                                handleOffset.toDp() - (handleSize + handlePadding * 2) / 2
-                            },
-                            label = "seek-bar-handle-position-animation"
-                        ).value
-                    )
+                    .size(width = touchTargetWidth, height = touchTargetHeight)
+                    .offset(x = thumbXOffset)
+                    .align(Alignment.CenterStart)
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = {
@@ -235,15 +203,9 @@ fun WavingSeekBar(
                             handleOffset += if (isLtr) dragAmount.x else -dragAmount.x
 
                             handleOffset = handleOffset.coerceIn(0f, barWidth)
-                            handleOffsetFraction = handleOffset / barWidth
+                            handleOffsetFraction = if (barWidth > 0f) handleOffset / barWidth else 0f
                         }
                     }
-                    .align(Alignment.CenterStart)
-                    .graphicsLayer {
-                        rotationZ = if (isPlaying) handleRotation.value else lastAngle
-                    }
-                    .clip(RoundedCornerShape(handleSize / 3))
-                    .background(color = MaterialTheme.colorScheme.primary)
             )
         }
 
@@ -295,6 +257,55 @@ fun WavingSeekBar(
 }
 
 @Composable
+fun WavingSeekBar(
+    position: Long,
+    duration: Long,
+    isPlaying: Boolean,
+    onPositionChange: (Long) -> Unit,
+    enableWaving: Boolean = true,
+    waveHeight: Dp = 6.dp,
+    waveWidth: Dp = 6.dp,
+    strokeWidth: Dp = 3.dp,
+    handleSize: Dp = 20.dp,
+    modifier: Modifier = Modifier
+) = SquigglySeekBar(
+    position = position,
+    duration = duration,
+    isPlaying = isPlaying,
+    onPositionChange = onPositionChange,
+    enableWaving = enableWaving,
+    waveHeight = waveHeight,
+    waveLength = (waveWidth * 7f).coerceAtLeast(36.dp),
+    strokeWidth = strokeWidth,
+    thumbHeight = handleSize,
+    modifier = modifier
+)
+
+/**
+ * Seek bar thumb handle matching Gramophone's capsule / vertical pill shape
+ * (as specified in media_seekbar_thumb.xml).
+ */
+@Composable
+fun SeekBarHandle(
+    modifier: Modifier = Modifier,
+    thumbWidth: Dp = 4.dp,
+    thumbHeight: Dp = 20.dp,
+    thumbColor: Color = MaterialTheme.colorScheme.primary,
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = thumbWidth, height = thumbHeight)
+                .clip(CircleShape)
+                .background(color = thumbColor)
+        )
+    }
+}
+
+@Composable
 fun FilledSeekBarSegment(
     color: Color,
     enableWaving: Boolean = true,
@@ -308,7 +319,7 @@ fun FilledSeekBarSegment(
     var canvasHeight by remember {
         mutableFloatStateOf(0f)
     }
-    val waveWidth by remember {
+    val resolvedWaveWidth by remember {
         derivedStateOf {
             waveWidth ?: (canvasHeight / 1.5f)
         }
@@ -318,15 +329,9 @@ fun FilledSeekBarSegment(
         label = "wave-height"
     )
 
-    val strokeWidth by remember {
-        derivedStateOf {
-            strokeWidth
-        }
-    }
-
     val offset by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = (if (waveBackwards) waveWidth else -waveWidth) * 2 * PI.toFloat(),
+        targetValue = (if (waveBackwards) resolvedWaveWidth else -resolvedWaveWidth) * 2 * PI.toFloat(),
         animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = LinearEasing)
         ),
@@ -340,11 +345,11 @@ fun FilledSeekBarSegment(
     ) {
 
         val path = Path().apply {
-            moveTo(x = 0f, y = canvasHeight / 2 + waveHeight * cos(-offset / waveWidth) / 2)
+            moveTo(x = 0f, y = canvasHeight / 2 + waveHeight * cos(-offset / resolvedWaveWidth) / 2)
             for (i in 0..size.width.toInt()) {
                 lineTo(
                     x = i.toFloat(),
-                    y = canvasHeight / 2 + waveHeight * cos((i.toFloat() - offset) / waveWidth) / 2
+                    y = canvasHeight / 2 + waveHeight * cos((i.toFloat() - offset) / resolvedWaveWidth) / 2
                 )
             }
         }
@@ -381,9 +386,4 @@ fun RestSeekBarSegment(
             )
         )
     }
-}
-
-@Composable
-fun SeekBarHandle(modifier: Modifier = Modifier) {
-    Box(modifier = modifier)
 }
