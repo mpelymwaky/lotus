@@ -7,6 +7,13 @@
   
 </div>
 
+## ✨ Fork Enhancements
+
+This repository maintains and extends [dn0ne/lotus](https://github.com/dn0ne/lotus) with community improvements:
+
+* **`SquigglyProgress` Seekbar:** Modern Jetpack Compose wavy progress indicator for playback control.
+* **Math & Wave Dynamics Tests:** Unit test coverage (`CalculationUtilsTest` and `SquigglyProgressTest`) for animation and calculation stability.
+
 ## Screenshots
 
 <div align="center">
